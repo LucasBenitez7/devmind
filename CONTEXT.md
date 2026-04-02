@@ -15,6 +15,8 @@ Responses stream token by token (SSE) with inline source citations [1][2] and a 
 Portfolio project — demonstrates agentic RAG, LangGraph stateful graphs, multi-tenant architecture, async Python, Next.js 15.
 URL: devmind.lsbstack.com
 
+**Design docs:** `docs/API_DESIGN.md` (schemas), `docs/PHASES.md` (delivery checklist), `docs/TECHNICAL_DECISIONS.md` (limits, chunking, Redis keys, ER sketch).
+
 ## Stack
 
 | Layer           | Technology                                             |
@@ -35,7 +37,7 @@ URL: devmind.lsbstack.com
 | Re-ranking      | Cohere rerank-english-v3.0 via cohere 5.x              |
 | Auth            | Auth0 Organizations + JWT/JWKS · Auth0 Next.js SDK 3.x |
 | Storage         | Cloudflare R2 (boto3)                                  |
-| Frontend        | Next.js 15.2 · React 19 · Tailwind CSS 4 · shadcn/ui   |
+| Frontend        | Next.js 15.2 · React 19 · Tailwind CSS 4 · shadcn/ui  |
 | State           | Zustand 5 · TanStack Query 5                           |
 | Streaming       | Native EventSource API (SSE) — no Vercel AI SDK        |
 | Logging         | structlog (JSON)                                       |
@@ -71,9 +73,9 @@ backend/app/
 └── core/
     ├── config.py         → pydantic-settings
     ├── database.py       → async engine, get_db
-    ├── redis.py          → async redis client
+    ├── redis.py          → async Redis client (`from __future__ import annotations` + `Redis[Any]` for mypy; redis-py is not generic at runtime)
     ├── security.py       → JWT decode, org_id extraction
-    ├── exceptions.py     → DevMindException hierarchy
+    ├── exceptions.py     → DevMindException hierarchy (N818 ignored — intentional base class naming)
     └── middleware.py     → request ID, logging context
 ```
 
@@ -102,6 +104,27 @@ owner → admin → member → viewer
 - Conversation history: last 10 messages in every agent call; summarize if >8000 tokens
 - Magic bytes validation on every upload — never trust file extension alone
 - Presigned URLs for R2 (TTL 1h) — never expose direct R2 URLs
+- python-jose instead of PyJWT — Auth0 uses RS256/JWKS, python-jose handles it natively
+- Redis typing: `Redis[Any]` satisfies mypy (types-redis); postponed annotations avoid runtime `TypeError` because redis-py’s `Redis` is not a generic class at import time
+
+## Known mypy / Ruff overrides (intentional)
+
+```toml
+# pyproject.toml — excerpt; full list in backend/pyproject.toml
+[[tool.mypy.overrides]]
+module = [
+    "celery.*", "kombu.*", "slowapi.*", "jose.*", "filetype.*",
+    "tavily.*", "cohere.*", "pgvector.*", "boto3.*", "botocore.*",
+]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["app.infrastructure.workers.*"]
+ignore_errors = true
+
+[tool.ruff.lint]
+ignore = ["N818"]      # DevMindException base class — intentional naming
+```
 
 ## Plans and limits
 
@@ -115,7 +138,7 @@ owner → admin → member → viewer
 
 ## Development phases
 
-- [ ] Phase 0 — Project setup (monorepo, Docker Compose, CI, pre-commit, branch protection)
+- [ ] Phase 0 — Project setup (monorepo, Docker Compose, backend CI, pre-commit; ver checklist en `docs/PHASES.md`)
 - [ ] Phase 1 — Auth & tenants (Auth0 Organizations, JWT, RBAC, auth UI)
 - [ ] Phase 2 — Document ingestion (upload, chunking, embeddings, Celery, pgvector)
 - [ ] Phase 3 — RAG core + re-ranking (VectorStore adapter, Cohere rerank)
@@ -130,16 +153,25 @@ owner → admin → member → viewer
 
 ## Current status
 
-**Current phase:** Phase 0 — Project setup
+**Current phase:** Phase 0 — cierre de setup (PR / validación); **siguiente:** Phase 1 — Auth & tenants
 
-**Completed:** —
+**Hecho en repo (backend, fase 0):**
+- Monorepo con `backend/`, `docs/`, `infra/`; carpeta `frontend/` reservada (aún sin scaffold)
+- FastAPI: `GET /health`, `GET /health/detailed` en la raíz (sin prefijo `/api/v1` hasta agrupar routers)
+- Docker Compose dev: PostgreSQL 16 + pgvector + Redis 7.4 (`infra/docker-compose.dev.yml`)
+- Alembic configurado; **pendiente:** primera revisión en `alembic/versions/`
+- Ruff, mypy (strict), bandit; pre-commit (Ruff, mypy, bandit, conventional commits)
+- GitHub Actions: `.github/workflows/backend.yml` (lint, typecheck, tests con Postgres + Redis de servicio)
+- `backend/.env.example` alineado con variables documentadas
 
-**Working on now:** Monorepo initialization, Docker Compose dev, CI pipeline with path filters, pre-commit hooks, branch protection.
+**Pendiente típico antes de dar Phase 0 por cerrada:** primera migración Alembic, scaffold frontend + ESLint/Prettier + `.env.local.example`, workflow CI frontend (ver `docs/PHASES.md`).
+
+**Working on next:** Auth0 Organizations, JWT/JWKS middleware, RBAC, `GET /auth/me`, `GET /orgs/me`
 
 **Known decisions:**
-
-- Monorepo: backend/ + frontend/ in same repo, CI uses path filters
+- Monorepo: `backend/` + `frontend/` en el mismo repo; CI backend con path filters; CI frontend cuando exista código en `frontend/`
 - Deploy: Railway (backend + PostgreSQL + Redis addon) · Vercel (frontend)
 - Storage: Cloudflare R2 (S3-compatible, no egress costs)
 - No microservices — Modular Monolith, extract only if scale requires it
-- Vertical phases — back + front together per phase
+- Frontend strategy: back first, front only when UI is essential (Phase 1 needs auth UI, Phase 2 needs basic upload UI, rest is backend-only until Phase 8)
+- Tests en CI usan la base `devmind_test` creada por el servicio Postgres del workflow; localmente hace falta crear esa DB si quieres correr los mismos tests contra Docker
