@@ -1,0 +1,144 @@
+[project]
+name = "devmind"
+version = "0.1.0"
+description = "AI assistant for dev teams — RAG agent with internal docs + real-time web search"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # Framework
+    "fastapi[standard]>=0.115.6",
+    # Agent
+    "langgraph>=0.2.73",
+    "langchain-anthropic>=0.3.7",
+    "langchain-openai>=0.3.7",
+    "langchain-community>=0.3.15",
+    "tavily-python>=0.5.0",
+    "cohere>=5.13.5",
+    # Database
+    "sqlalchemy[asyncio]>=2.0.37",
+    "alembic>=1.14.0",
+    "asyncpg>=0.30.0",
+    "pgvector>=0.3.6",
+    "psycopg[binary]>=3.2.4",
+    # Cache
+    "redis[hiredis]>=5.2.1",
+    # Auth
+    "python-jose[cryptography]>=3.3.0",
+    "httpx>=0.28.1",
+    # Validation
+    "pydantic>=2.10.4",
+    "pydantic-settings>=2.7.1",
+    # Background jobs
+    "celery[redis]>=5.4.0",
+    # Storage
+    "boto3>=1.36.6",
+    # Logging
+    "structlog>=24.4.0",
+    # Rate limiting
+    "slowapi>=0.1.9",
+    # File processing
+    "pypdf>=5.1.0",
+    "python-multipart>=0.0.20",
+    "filetype>=1.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.25.2",
+    "pytest-mock>=3.14.0",
+    "pytest-cov>=6.0.0",
+    "httpx>=0.28.1",
+    "factory-boy>=3.3.0",
+    "Faker>=24.0.0",
+    "ruff>=0.9.2",
+    "mypy>=1.13.0",
+    "bandit>=1.7.0",
+    "pre-commit>=4.0.1",
+    "types-redis>=4.6.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+# ---------------------------------------------------------------------------
+# Ruff
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+    "N",  # pep8-naming
+]
+ignore = ["E501", "B008", "B904", "N818"]
+
+[tool.ruff.lint.per-file-ignores]
+"alembic/env.py" = ["E402"]
+"alembic/versions/*.py" = ["E402", "I001", "UP007", "UP035", "W291"]
+"tests/**/*.py" = ["S101"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+# ---------------------------------------------------------------------------
+# mypy
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+exclude = ["alembic/", "tests/"]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = [
+    "celery.*",
+    "kombu.*",
+    "slowapi.*",
+    "jose.*",
+    "filetype.*",
+    "tavily.*",
+    "cohere.*",
+    "pgvector.*",
+    "boto3.*",
+    "botocore.*",
+]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["app.infrastructure.workers.*"]
+ignore_errors = true
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "--cov=app --cov-report=term-missing --cov-fail-under=60"
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["*/alembic/*", "app/infrastructure/*/adapters/*"]
+
+[tool.coverage.report]
+fail_under = 60
+
+# ---------------------------------------------------------------------------
+# bandit
+# ---------------------------------------------------------------------------
+[tool.bandit]
+exclude_dirs = ["tests", "alembic"]
+severity = "medium"
