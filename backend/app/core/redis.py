@@ -1,12 +1,14 @@
+from typing import Any
+
 from redis.asyncio import Redis
 from redis.asyncio import from_url as redis_from_url
 
 from app.core.config import settings
 
-_redis: Redis | None = None
+_redis: Redis[Any] | None = None
 
 
-async def get_redis() -> Redis:
+async def get_redis() -> Redis[Any]:
     global _redis
     if _redis is None:
         _redis = redis_from_url(  # type: ignore[no-untyped-call]
